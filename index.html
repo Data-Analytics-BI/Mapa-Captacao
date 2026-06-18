@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Mapa de Filiais - Raio de 3km</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<style>
+  html, body { margin:0; padding:0; height:100%; font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+  #map { position:fixed; top:48px; left:0; right:0; bottom:0; }
+  .header {
+    position:fixed; top:0; left:0; right:0; height:48px; background:#0D1B3E; color:#F4F6FA;
+    display:flex; align-items:center; padding:0 16px; z-index:1000; box-shadow:0 1px 4px rgba(0,0,0,0.3);
+    font-size:15px; font-weight:600; letter-spacing:0.3px;
+  }
+  .header .accent { color:#028090; margin-right:8px; }
+  .legend { background:white; padding:10px 12px; border-radius:6px; box-shadow:0 1px 4px rgba(0,0,0,0.3); font-size:13px; line-height:1.5; max-width:230px; }
+  .legend b { font-size:14px; }
+  .legend .filial-row { display:flex; justify-content:space-between; align-items:center; }
+  .legend .filial-row .cnt { color:#888; font-size:11px; }
+  .swatch { display:inline-block; width:13px; height:13px; border-radius:50%; margin-right:6px; vertical-align:middle; }
+  .filial-popup b { font-size:14px; }
+  .search-box { background:white; padding:10px; border-radius:6px; box-shadow:0 1px 4px rgba(0,0,0,0.3); font-size:13px; width:260px; }
+  .search-box input { width:100%; box-sizing:border-box; padding:6px 8px; border:1px solid #ccc; border-radius:4px; font-size:13px; margin-bottom:6px; }
+  .search-box button { width:100%; padding:6px 8px; background:#1E5FA5; color:white; border:none; border-radius:4px; font-size:13px; cursor:pointer; }
+  .search-box button:hover { background:#16487f; }
+  .search-status { font-size:12px; color:#666; margin-top:4px; min-height:14px; }
+
+  .filter-box { background:white; padding:10px; border-radius:6px; box-shadow:0 1px 4px rgba(0,0,0,0.3); font-size:13px; width:260px; transition: margin-right 0.2s ease; }
+  .filter-box .field { margin-bottom:10px; }
+  .filter-box label { display:block; font-weight:600; margin-bottom:4px; font-size:12px; color:#333; }
+  .filter-box select { width:100%; padding:6px; border:1px solid #ccc; border-radius:4px; font-size:13px; }
+  .range-values { display:flex; justify-content:space-between; font-size:11px; color:#555; margin-bottom:2px; }
+  .range-slider-wrap { position:relative; height:32px; }
+  .range-slider-wrap input[type=range] {
+    position:absolute; width:100%; pointer-events:none; appearance:none; background:transparent; top:10px;
+  }
+  .range-slider-wrap input[type=range]::-webkit-slider-thumb {
+    pointer-events:auto; appearance:none; width:14px; height:14px; border-radius:50%; background:#1E5FA5; cursor:pointer; border:2px solid white; box-shadow:0 0 2px rgba(0,0,0,0.4);
+  }
+  .range-slider-wrap input[type=range]::-moz-range-thumb {
+    pointer-events:auto; width:14px; height:14px; border-radius:50%; background:#1E5FA5; cursor:pointer; border:2px solid white;
+  }
+  .range-track { position:absolute; top:14px; height:4px; width:100%; background:#ddd; border-radius:2px; }
+  .range-track-fill { position:absolute; top:14px; height:4px; background:#1E5FA5; border-radius:2px; }
+
+  /* Painel lateral de detalhes */
+  #detail-panel {
+    position:fixed; top:48px; right:0; bottom:0; width:300px; background:white;
+    box-shadow:-2px 0 8px rgba(0,0,0,0.2); z-index:1100; transform:translateX(100%);
+    transition:transform 0.2s ease; overflow-y:auto; padding:16px; box-sizing:border-box;
+  }
+  #detail-panel.open { transform:translateX(0); }
+  #detail-panel .close-btn { position:absolute; top:10px; right:12px; cursor:pointer; font-size:18px; color:#888; background:none; border:none; }
+  #detail-panel h3 { margin:18px 0 10px 0; font-size:16px; color:#0D1B3E; }
+  #detail-panel .row { font-size:13px; margin-bottom:8px; color:#333; }
+  #detail-panel .row b { color:#0D1B3E; }
+  #detail-panel .badge-out { display:inline-block; background:#854F0B; color:white; font-size:11px; padding:2px 8px; border-radius:10px; margin-top:6px; }
+  #detail-panel .badge-in { display:inline-block; background:#0D7A3B; color:white; font-size:11px; padding:2px 8px; border-radius:10px; margin-top:6px; }
+</style>
+</head>
+<body>
+<div id="app-container" style="position:relative; width:100%; height:100vh;">
+  <div class="header"><span class="accent">●</span>Mapa de Captação</div>
+  <div id="map"></div>
+  <div id="detail-panel">
+    <button class="close-btn" id="panel-close">✕</button>
+    <div id="panel-content"></div>
+  </div>
+</div>
+<script>
+const filiais = [{"filial": "Vila Mariana", "lat": -23.602937605644367, "lon": -46.63697810802204}, {"filial": "Tatuapé", "lat": -23.55068222702443, "lon": -46.56266379839973}, {"filial": "Oscar", "lat": -23.56456355034802, "lon": -46.66741758476419}, {"filial": "Norte", "lat": -23.475237010745037, "lon": -46.613082437563584}, {"filial": "Mooca", "lat": -23.563517103983035, "lon": -46.59748035566487}, {"filial": "Berrini", "lat": -23.611783155899346, "lon": -46.69568144008199}, {"filial": "ABC", "lat": -23.667763180448677, "lon": -46.53632314098013}];
+const props = [{"lat": -23.54877, "lon": -46.68928, "rua": "Rua Paulistânia", "num": 600, "bairro": "Vila Madalena", "cidade": "São Paulo", "emp": "Authentic Madalena", "status": "Comercialização", "filial": "Oscar", "tkt": 7840.56, "tipo": "Cobertura", "entrega": "12/2019", "mts": 110.8, "dorms": 2}, {"lat": -23.61946, "lon": -46.73713, "rua": "Rua Doutor Oscar Monteiro de Barros", "num": 434, "bairro": "Vila Suzana", "cidade": "São Paulo", "emp": "Rg Oscar", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 6088.48, "tipo": "Garden", "entrega": "03/2018", "mts": 142.4, "dorms": 2}, {"lat": -23.60749, "lon": -46.66207, "rua": "Avenida Jandira", "num": 268, "bairro": "Indianópolis", "cidade": "São Paulo", "emp": "Amplify Moema", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 7232.69, "tipo": "Padrão", "entrega": "12/2018", "mts": 96.0, "dorms": 2}, {"lat": -23.59867, "lon": -46.60463, "rua": "Rua Clemente Pereira", "num": 64, "bairro": "Ipiranga", "cidade": "São Paulo", "emp": "Wish Residence", "status": "Comercialização", "filial": "Mooca", "tkt": 3916.0, "tipo": "Padrão", "entrega": "10/2016", "mts": 68.0, "dorms": 2}, {"lat": -23.59867, "lon": -46.60463, "rua": "Rua Clemente Pereira", "num": 64, "bairro": "Ipiranga", "cidade": "São Paulo", "emp": "Wish Residence", "status": "Comercialização", "filial": "Mooca", "tkt": 4950.0, "tipo": "Padrão", "entrega": "10/2016", "mts": 120.0, "dorms": 3}, {"lat": -23.58309, "lon": -46.63968, "rua": "Rua Doutor Fabrício Vampré", "num": 111, "bairro": "Vila Mariana", "cidade": "São Paulo", "emp": "Essência Da Vila", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 7757.5, "tipo": "Padrão", "entrega": "02/2024", "mts": 107.0, "dorms": 2}, {"lat": -23.58275, "lon": -46.63549, "rua": "Rua Gregório Serrão", "num": 232, "bairro": "Vila Mariana", "cidade": "São Paulo", "emp": "Atmosfera Vila Mariana", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 7907.2, "tipo": "Garden", "entrega": "05/2023", "mts": 112.0, "dorms": 3}, {"lat": -23.64403, "lon": -46.66846, "rua": "Rua Palestina", "num": 300, "bairro": "Vila Mascote", "cidade": "São Paulo", "emp": "Rhapsody Vila Mascote", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 7100.0, "tipo": "Padrão", "entrega": "10/2021", "mts": 125.5, "dorms": 4}, {"lat": -23.64403, "lon": -46.66846, "rua": "Rua Palestina", "num": 300, "bairro": "Vila Mascote", "cidade": "São Paulo", "emp": "Rhapsody Vila Mascote", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 5943.6, "tipo": "Padrão", "entrega": "10/2021", "mts": 132.1, "dorms": 4}, {"lat": -23.6032, "lon": -46.60942, "rua": "Avenida Nazaré - de 1353 ao fim - lado ímpar", "num": 2118, "bairro": "Ipiranga", "cidade": "São Paulo", "emp": "Living Ipiranga", "status": "Comercialização", "filial": "Mooca", "tkt": 4720.58, "tipo": "Padrão", "entrega": "09/2023", "mts": 67.4, "dorms": 2}, {"lat": -23.6032, "lon": -46.60942, "rua": "Avenida Nazaré - de 1353 ao fim - lado ímpar", "num": 2118, "bairro": "Ipiranga", "cidade": "São Paulo", "emp": "Living Ipiranga", "status": "Comercialização", "filial": "Mooca", "tkt": 6352.86, "tipo": "Padrão", "entrega": "09/2023", "mts": 93.7, "dorms": 3}, {"lat": -23.58208, "lon": -46.55827, "rua": "Avenida Professor Luiz Ignácio Anhaia Mello - de 3102 a 6000 - lado par", "num": 3660, "bairro": "Jardim Independência", "cidade": "São Paulo", "emp": "Raízes Vila Prudente", "status": "Comercialização", "filial": "Mooca", "tkt": 3465.33, "tipo": "Padrão", "entrega": "10/2022", "mts": 63.1, "dorms": 2}, {"lat": -23.58208, "lon": -46.55827, "rua": "Avenida Professor Luiz Ignácio Anhaia Mello - de 3102 a 6000 - lado par", "num": 3660, "bairro": "Jardim Independência", "cidade": "São Paulo", "emp": "Raízes Vila Prudente", "status": "Comercialização", "filial": "Mooca", "tkt": 4439.86, "tipo": "Padrão", "entrega": "10/2022", "mts": 78.5, "dorms": 3}, {"lat": -23.58202, "lon": -46.57691, "rua": "Rua Torquato Tasso", "num": 965, "bairro": "Vila Prudente", "cidade": "São Paulo", "emp": "Galeria Family Club - Fase 1", "status": "Comercialização", "filial": "Mooca", "tkt": 3355.0, "tipo": "Padrão", "entrega": "12/2022", "mts": 64.0, "dorms": 2}, {"lat": -23.58202, "lon": -46.57691, "rua": "Rua Torquato Tasso", "num": 965, "bairro": "Vila Prudente", "cidade": "São Paulo", "emp": "Galeria Family Club - Fase 1", "status": "Comercialização", "filial": "Mooca", "tkt": 4527.86, "tipo": "Padrão", "entrega": "12/2022", "mts": 87.0, "dorms": 3}, {"lat": -23.62561, "lon": -46.64395, "rua": "Avenida Itacira", "num": 2681, "bairro": "Planalto Paulista", "cidade": "São Paulo", "emp": "Ar Planalto", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 4550.0, "tipo": "Padrão", "entrega": "01/2024", "mts": 97.0, "dorms": 3}, {"lat": -23.61176, "lon": -46.669, "rua": "Avenida dos Carinás", "num": 64, "bairro": "Indianópolis", "cidade": "São Paulo", "emp": "Composite Moema", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 7741.52, "tipo": "Cobertura", "entrega": "11/2023", "mts": 103.0, "dorms": 2}, {"lat": -23.59868, "lon": -46.61393, "rua": "Rua Salvador Simões", "num": 590, "bairro": "Centro", "cidade": "São Paulo", "emp": "Living Alto Do Ipiranga", "status": "Comercialização", "filial": "Mooca", "tkt": 5490.49, "tipo": "Padrão", "entrega": "10/2023", "mts": 72.0, "dorms": 3}, {"lat": -23.59868, "lon": -46.61393, "rua": "Rua Salvador Simões", "num": 590, "bairro": "Centro", "cidade": "São Paulo", "emp": "Living Alto Do Ipiranga", "status": "Comercialização", "filial": "Mooca", "tkt": 7176.42, "tipo": "Padrão", "entrega": "10/2023", "mts": 98.0, "dorms": 3}, {"lat": -23.55749, "lon": -46.63685, "rua": "Avenida da Liberdade", "num": 574, "bairro": "Liberdade", "cidade": "São Paulo", "emp": "Co.next Liberdade", "status": "Comercialização", "filial": "Mooca", "tkt": 5529.96, "tipo": "Padrão", "entrega": "08/2023", "mts": 60.0, "dorms": 2}, {"lat": -23.57557, "lon": -46.59266, "rua": "Rua Barão de Monte Santo", "num": 1280, "bairro": "Mooca", "cidade": "São Paulo", "emp": "Eredità Parque Da Mooca", "status": "Comercialização", "filial": "Mooca", "tkt": 6852.54, "tipo": "Padrão", "entrega": "01/2024", "mts": 92.0, "dorms": 3}, {"lat": -23.56647, "lon": -46.63059, "rua": "Rua Bueno de Andrade", "num": 726, "bairro": "Aclimação", "cidade": "São Paulo", "emp": "Vert Mbigucci", "status": "Comercialização", "filial": "Mooca", "tkt": 4228.31, "tipo": "Padrão", "entrega": "05/2024", "mts": 65.0, "dorms": 2}, {"lat": -23.56647, "lon": -46.63059, "rua": "Rua Bueno de Andrade", "num": 726, "bairro": "Aclimação", "cidade": "São Paulo", "emp": "Vert Mbigucci", "status": "Comercialização", "filial": "Mooca", "tkt": 4261.58, "tipo": "Padrão", "entrega": "05/2024", "mts": 70.0, "dorms": 2}, {"lat": -23.56647, "lon": -46.63059, "rua": "Rua Bueno de Andrade", "num": 726, "bairro": "Aclimação", "cidade": "São Paulo", "emp": "Vert Mbigucci", "status": "Comercialização", "filial": "Mooca", "tkt": 3209.0, "tipo": "Padrão", "entrega": "05/2024", "mts": 89.3, "dorms": 2}, {"lat": -23.56647, "lon": -46.63059, "rua": "Rua Bueno de Andrade", "num": 726, "bairro": "Aclimação", "cidade": "São Paulo", "emp": "Vert Mbigucci", "status": "Comercialização", "filial": "Mooca", "tkt": 3364.0, "tipo": "Padrão", "entrega": "05/2024", "mts": 94.8, "dorms": 2}, {"lat": -23.58071, "lon": -46.56849, "rua": "Avenida Vila Ema", "num": 850, "bairro": "Vila Prudente", "cidade": "São Paulo", "emp": "Urbo Vila Prudente", "status": "Comercialização", "filial": "Mooca", "tkt": 3128.16, "tipo": "Padrão", "entrega": "11/2021", "mts": 62.8, "dorms": 2}, {"lat": -23.58071, "lon": -46.56849, "rua": "Avenida Vila Ema", "num": 850, "bairro": "Vila Prudente", "cidade": "São Paulo", "emp": "Urbo Vila Prudente", "status": "Comercialização", "filial": "Mooca", "tkt": 3971.76, "tipo": "Padrão", "entrega": "11/2021", "mts": 80.9, "dorms": 3}, {"lat": -23.52025, "lon": -46.67577, "rua": "Rua Adalberto Kemeny", "num": 119, "bairro": "Barra Funda", "cidade": "São Paulo", "emp": "Living One", "status": "Comercialização", "filial": "Oscar", "tkt": 5932.74, "tipo": "Padrão", "entrega": "03/2024", "mts": 90.0, "dorms": 3}, {"lat": -23.52025, "lon": -46.67577, "rua": "Rua Adalberto Kemeny", "num": 119, "bairro": "Barra Funda", "cidade": "São Paulo", "emp": "Living One", "status": "Comercialização", "filial": "Oscar", "tkt": 7927.33, "tipo": "Padrão", "entrega": "03/2024", "mts": 116.0, "dorms": 4}, {"lat": -23.59868, "lon": -46.61393, "rua": "Rua Salvador Simões", "num": 590, "bairro": "Ipiranga", "cidade": "São Paulo", "emp": "Living In", "status": "Comercialização", "filial": "Mooca", "tkt": 5419.67, "tipo": "Padrão", "entrega": "10/2023", "mts": 72.3, "dorms": 2}, {"lat": -23.59868, "lon": -46.61393, "rua": "Rua Salvador Simões", "num": 590, "bairro": "Ipiranga", "cidade": "São Paulo", "emp": "Living In", "status": "Comercialização", "filial": "Mooca", "tkt": 7179.89, "tipo": "Padrão", "entrega": "10/2023", "mts": 98.9, "dorms": 3}, {"lat": -23.58383, "lon": -46.64198, "rua": "Rua Conselheiro Rodrigues Alves", "num": 429, "bairro": "Vila Mariana", "cidade": "São Paulo", "emp": "Solaz Vila Mariana", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 6811.15, "tipo": "Garden", "entrega": "12/2023", "mts": 116.0, "dorms": 3}, {"lat": -23.56377, "lon": -46.69165, "rua": "Av. Pedroso de Morais", "num": 737, "bairro": "Pinheiros", "cidade": "São Paulo", "emp": "737 Pedroso", "status": "Comercialização", "filial": "Oscar", "tkt": 6571.0, "tipo": "Garden", "entrega": "04/2024", "mts": 99.3, "dorms": 2}, {"lat": -23.61365, "lon": -46.63562, "rua": "Rua General Camisão", "num": 223, "bairro": "Saúde", "cidade": "São Paulo", "emp": "Aurora", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 6582.63, "tipo": "Padrão", "entrega": "10/2024", "mts": 117.0, "dorms": 3}, {"lat": -23.55005, "lon": -46.60891, "rua": "Rua Frei Gaspar", "num": 220, "bairro": "Mooca", "cidade": "São Paulo", "emp": "Teg Mooca", "status": "Comercialização", "filial": "Mooca", "tkt": 3748.39, "tipo": "Padrão", "entrega": "12/2023", "mts": 67.0, "dorms": 3}, {"lat": -23.60642, "lon": -46.6366, "rua": "Rua Caramuru", "num": 263, "bairro": "Vila Mariana", "cidade": "São Paulo", "emp": "My Place Vila Mariana", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 5262.78, "tipo": "Cobertura", "entrega": "12/2022", "mts": 94.0, "dorms": 2}, {"lat": -23.60378, "lon": -46.62084, "rua": "Rua do Arraial", "num": 209, "bairro": "Cambuci", "cidade": "São Paulo", "emp": "Residencial La Fontana", "status": "Comercialização", "filial": "Mooca", "tkt": 3150.0, "tipo": "Padrão", "entrega": "10/2022", "mts": 63.0, "dorms": 2}, {"lat": -23.60378, "lon": -46.62084, "rua": "Rua do Arraial", "num": 209, "bairro": "Cambuci", "cidade": "São Paulo", "emp": "Residencial La Fontana", "status": "Comercialização", "filial": "Mooca", "tkt": 3750.0, "tipo": "Padrão", "entrega": "10/2022", "mts": 75.0, "dorms": 2}, {"lat": -23.60378, "lon": -46.62084, "rua": "Rua do Arraial", "num": 209, "bairro": "Cambuci", "cidade": "São Paulo", "emp": "Residencial La Fontana", "status": "Comercialização", "filial": "Mooca", "tkt": 4750.0, "tipo": "Padrão", "entrega": "10/2022", "mts": 95.0, "dorms": 3}, {"lat": -23.58298, "lon": -46.63603, "rua": "Rua Manuel de Paiva", "num": 129, "bairro": "Vila Mariana", "cidade": "São Paulo", "emp": "Evolve Vila Mariana", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 7751.31, "tipo": "Padrão", "entrega": "02/2025", "mts": 97.0, "dorms": 3}, {"lat": -23.56306, "lon": -46.64916, "rua": "Rua Almirante Marques de Leão", "num": 708, "bairro": "Bela Vista", "cidade": "São Paulo", "emp": "The Collection Paulista", "status": "Comercialização", "filial": "Mooca", "tkt": 5927.45, "tipo": "Padrão", "entrega": "11/2024", "mts": 60.0, "dorms": 2}, {"lat": -23.56306, "lon": -46.64916, "rua": "Rua Almirante Marques de Leão", "num": 708, "bairro": "Bela Vista", "cidade": "São Paulo", "emp": "The Collection Paulista", "status": "Comercialização", "filial": "Mooca", "tkt": 7005.3, "tipo": "Garden", "entrega": "11/2024", "mts": 98.0, "dorms": 2}, {"lat": -23.5835, "lon": -46.56231, "rua": "Avenida Alberto Ramos", "num": 89, "bairro": "Jardim Independência", "cidade": "São Paulo", "emp": "Dream View Sky Resort - Fase 1", "status": "Comercialização", "filial": "Mooca", "tkt": 3586.6, "tipo": "Padrão", "entrega": "12/2024", "mts": 63.8, "dorms": 2}, {"lat": -23.5835, "lon": -46.56231, "rua": "Avenida Alberto Ramos", "num": 89, "bairro": "Jardim Independência", "cidade": "São Paulo", "emp": "Dream View Sky Resort - Fase 1", "status": "Comercialização", "filial": "Mooca", "tkt": 4238.8, "tipo": "Padrão", "entrega": "12/2024", "mts": 73.2, "dorms": 2}, {"lat": -23.5835, "lon": -46.56231, "rua": "Avenida Alberto Ramos", "num": 89, "bairro": "Jardim Independência", "cidade": "São Paulo", "emp": "Dream View Sky Resort - Fase 1", "status": "Comercialização", "filial": "Mooca", "tkt": 5407.2, "tipo": "Padrão", "entrega": "12/2024", "mts": 91.2, "dorms": 3}, {"lat": -23.5835, "lon": -46.56231, "rua": "Avenida Alberto Ramos", "num": 89, "bairro": "Jardim Independência", "cidade": "São Paulo", "emp": "Dream View Sky Resort - Fase 1", "status": "Comercialização", "filial": "Mooca", "tkt": 5576.75, "tipo": "Padrão", "entrega": "12/2024", "mts": 93.2, "dorms": 3}, {"lat": -23.62384, "lon": -46.68771, "rua": "Rua Pássaros e Flores", "num": 192, "bairro": "Jardim Das Acácias", "cidade": "São Paulo", "emp": "La Casa Pássaros E Flores", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 4743.3, "tipo": "Garden", "entrega": "10/2023", "mts": 114.0, "dorms": 3}, {"lat": -23.61124, "lon": -46.67575, "rua": "Rua Rita Joana de Sousa", "num": 464, "bairro": "Campo Belo", "cidade": "São Paulo", "emp": "Practical Life Campo Belo Ii", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 5647.5, "tipo": "Garden", "entrega": "12/2023", "mts": 113.0, "dorms": 2}, {"lat": -23.54354, "lon": -46.68389, "rua": "Rua Havaí", "num": 63, "bairro": "Perdizes", "cidade": "São Paulo", "emp": "Lure Perdizes", "status": "Comercialização", "filial": "Oscar", "tkt": 7716.4, "tipo": "Padrão", "entrega": "07/2024", "mts": 90.0, "dorms": 3}, {"lat": -23.54633, "lon": -46.69014, "rua": "Rua José Augusto Penteado", "num": 70, "bairro": "Sumaré", "cidade": "São Paulo", "emp": "Máden Vila Madalena", "status": "Comercialização", "filial": "Oscar", "tkt": 7881.4, "tipo": "Padrão", "entrega": "04/2025", "mts": 92.0, "dorms": 3}, {"lat": -23.5939, "lon": -46.61725, "rua": "Rua Huet Bacelar", "num": 252, "bairro": "Nova Klabin", "cidade": "São Paulo", "emp": "Nattur Nova Klabin", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 6480.0, "tipo": "Garden", "entrega": "08/2024", "mts": 123.0, "dorms": 3}, {"lat": -23.58207, "lon": -46.55834, "rua": "Avenida Professor Luiz Ignácio Anhaia Mello", "num": 3660, "bairro": "Jardim Independência", "cidade": "São Paulo", "emp": "Raízes Vila Mascote", "status": "Comercialização", "filial": "Mooca", "tkt": 4111.14, "tipo": "Padrão", "entrega": "10/2021", "mts": 81.6, "dorms": 3}, {"lat": -23.58207, "lon": -46.55834, "rua": "Avenida Professor Luiz Ignácio Anhaia Mello", "num": 3660, "bairro": "Jardim Independência", "cidade": "São Paulo", "emp": "Raízes Vila Mascote", "status": "Comercialização", "filial": "Mooca", "tkt": 5099.78, "tipo": "Padrão", "entrega": "10/2021", "mts": 106.8, "dorms": 3}, {"lat": -23.58207, "lon": -46.55834, "rua": "Avenida Professor Luiz Ignácio Anhaia Mello", "num": 3660, "bairro": "Jardim Independência", "cidade": "São Paulo", "emp": "Raízes Vila Mascote", "status": "Comercialização", "filial": "Mooca", "tkt": 5914.12, "tipo": "Garden", "entrega": "10/2021", "mts": 107.2, "dorms": 3}, {"lat": -23.58207, "lon": -46.55834, "rua": "Avenida Professor Luiz Ignácio Anhaia Mello", "num": 3660, "bairro": "Jardim Independência", "cidade": "São Paulo", "emp": "Raízes Vila Mascote", "status": "Comercialização", "filial": "Mooca", "tkt": 6200.51, "tipo": "Garden", "entrega": "10/2021", "mts": 135.9, "dorms": 3}, {"lat": -23.57602, "lon": -46.58587, "rua": "R. Cel. Joviniano Brandão", "num": 441, "bairro": "Vila Prudente", "cidade": "São Paulo", "emp": "Realtá Parque Da Mooca", "status": "Comercialização", "filial": "Mooca", "tkt": 4284.76, "tipo": "Padrão", "entrega": "01/2024", "mts": 61.6, "dorms": 2}, {"lat": -23.57602, "lon": -46.58587, "rua": "R. Cel. Joviniano Brandão", "num": 441, "bairro": "Vila Prudente", "cidade": "São Paulo", "emp": "Realtá Parque Da Mooca", "status": "Comercialização", "filial": "Mooca", "tkt": 5234.39, "tipo": "Padrão", "entrega": "01/2024", "mts": 81.2, "dorms": 3}, {"lat": -23.60307, "lon": -46.60355, "rua": "Rua Ettore Lantieri", "num": 102, "bairro": "Sacomã", "cidade": "São Paulo", "emp": "Wonder Ipiranga Residencial", "status": "Comercialização", "filial": "ABC", "tkt": 4454.17, "tipo": "Padrão", "entrega": "11/2023", "mts": 75.0, "dorms": 3}, {"lat": -23.60615, "lon": -46.63878, "rua": "Alameda das Boninas", "num": 155, "bairro": "Mirandópolis", "cidade": "São Paulo", "emp": "Essential Mariana", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 7337.23, "tipo": "Padrão", "entrega": "09/2024", "mts": 108.6, "dorms": 3}, {"lat": -23.59862, "lon": -46.63219, "rua": "Rua Engenheiro José Sá Rocha", "num": 145, "bairro": "Vila Mariana", "cidade": "São Paulo", "emp": "About Vila Mariana", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 5271.62, "tipo": "Padrão", "entrega": "03/2025", "mts": 94.0, "dorms": 2}, {"lat": -23.62291, "lon": -46.63723, "rua": "Rua Ibituruna", "num": 298, "bairro": "Parque Imperial", "cidade": "São Paulo", "emp": "Signatur", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 6825.13, "tipo": "Garden", "entrega": "07/2025", "mts": 101.0, "dorms": 2}, {"lat": -23.62291, "lon": -46.63723, "rua": "Rua Ibituruna", "num": 298, "bairro": "Parque Imperial", "cidade": "São Paulo", "emp": "Signatur", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 7777.11, "tipo": "Garden", "entrega": "07/2025", "mts": 114.9, "dorms": 2}, {"lat": -23.62291, "lon": -46.63723, "rua": "Rua Ibituruna", "num": 298, "bairro": "Parque Imperial", "cidade": "São Paulo", "emp": "Signatur", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 7906.73, "tipo": "Padrão", "entrega": "07/2025", "mts": 109.4, "dorms": 3}, {"lat": -23.58202, "lon": -46.57687, "rua": "Rua Torquato Tasso", "num": 965, "bairro": "Vila Prudente", "cidade": "São Paulo", "emp": "Galeria Family Club - Fase 2", "status": "Comercialização", "filial": "Mooca", "tkt": 3310.0, "tipo": "Padrão", "entrega": "07/2023", "mts": 64.2, "dorms": 2}, {"lat": -23.58202, "lon": -46.57687, "rua": "Rua Torquato Tasso", "num": 965, "bairro": "Vila Prudente", "cidade": "São Paulo", "emp": "Galeria Family Club - Fase 2", "status": "Comercialização", "filial": "Mooca", "tkt": 5207.72, "tipo": "Padrão", "entrega": "07/2023", "mts": 84.0, "dorms": 3}, {"lat": -23.58686, "lon": -46.61371, "rua": "Rua Marcondes de Andrade", "num": 62, "bairro": "Ipiranga", "cidade": "São Paulo", "emp": "Imperium Mbigucci", "status": "Comercialização", "filial": "Mooca", "tkt": 7619.5, "tipo": "Padrão", "entrega": "05/2025", "mts": 101.2, "dorms": 3}, {"lat": -23.58201, "lon": -46.62512, "rua": "R. Cláudio", "num": 185, "bairro": "Agua Branca", "cidade": "São Paulo", "emp": "Rem Id Hospedagem Vila Romana", "status": "Comercialização", "filial": "Oscar", "tkt": 5356.27, "tipo": "Garden", "entrega": "09/2024", "mts": 99.0, "dorms": 2}, {"lat": -23.58201, "lon": -46.62512, "rua": "R. Cláudio", "num": 185, "bairro": "Agua Branca", "cidade": "São Paulo", "emp": "Rem Id Hospedagem Vila Romana", "status": "Comercialização", "filial": "Oscar", "tkt": 6736.74, "tipo": "Garden", "entrega": "09/2024", "mts": 114.0, "dorms": 3}, {"lat": -23.58534, "lon": -46.60105, "rua": "Rua Oliveira Alves", "num": 764, "bairro": "Ipiranga", "cidade": "São Paulo", "emp": "In Design Ipiranga", "status": "Comercialização", "filial": "Mooca", "tkt": 3822.4, "tipo": "Padrão", "entrega": "11/2024", "mts": 60.0, "dorms": 2}, {"lat": -23.50623, "lon": -46.72478, "rua": "Rua Ocrísia", "num": 100, "bairro": "Parque Toronto", "cidade": "São Paulo", "emp": "Unique Green - 2ª Fase", "status": "Comercialização", "filial": "Norte", "tkt": 7919.38, "tipo": "Padrão", "entrega": "08/2025", "mts": 106.0, "dorms": 4}, {"lat": -23.64558, "lon": -46.70382, "rua": "Rua Coronel Luís Barroso", "num": 566, "bairro": "Santo Amaro", "cidade": "São Paulo", "emp": "Hi View Alto Da Boa Vista - Residence", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 7913.88, "tipo": "Padrão", "entrega": "06/2025", "mts": 95.0, "dorms": 2}, {"lat": -23.47566, "lon": -46.67175, "rua": "Avenida Inajar de Souza", "num": 3900, "bairro": "Limão", "cidade": "São Paulo", "emp": "Vivaz Prime Vila Nova Cachoeirinha - Fase 1", "status": "Comercialização", "filial": "Norte", "tkt": 2445.0, "tipo": "Garden", "entrega": "12/2024", "mts": 97.0, "dorms": 3}, {"lat": -23.57326, "lon": -46.71101, "rua": "Rua Alvarenga", "num": 994, "bairro": "Butantã", "cidade": "São Paulo", "emp": "Modern Estação Butantã", "status": "Comercialização", "filial": "Oscar", "tkt": 5913.73, "tipo": "Padrão", "entrega": "10/2024", "mts": 94.4, "dorms": 3}, {"lat": -23.543, "lon": -46.55317, "rua": "Rua Cantagalo", "num": 2167, "bairro": "Tatuapé", "cidade": "São Paulo", "emp": "Living Villaggio Tatuapé Firenze", "status": "Comercialização", "filial": "Tatuapé", "tkt": 7475.28, "tipo": "Padrão", "entrega": "10/2024", "mts": 100.0, "dorms": 3}, {"lat": -23.59661, "lon": -46.74691, "rua": "Avenida Pirajussara", "num": 4123, "bairro": "Instituto De Previdência", "cidade": "São Paulo", "emp": "Blue Home Resort Jockey", "status": "Comercialização", "filial": "Oscar", "tkt": 4773.26, "tipo": "Garden", "entrega": "08/2025", "mts": 95.0, "dorms": 2}, {"lat": -23.60408, "lon": -46.64802, "rua": "Rua Luís Góis", "num": 2073, "bairro": "Miradópolis", "cidade": "São Paulo", "emp": "Organy Essencial", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 7843.37, "tipo": "Garden", "entrega": "10/2024", "mts": 117.0, "dorms": 3}, {"lat": -23.54413, "lon": -46.58488, "rua": "Rua Padre Adelino", "num": 957, "bairro": "Quarta Parada", "cidade": "São Paulo", "emp": "Parque Diálogo Padre Adelino", "status": "Comercialização", "filial": "Tatuapé", "tkt": 6131.23, "tipo": "Padrão", "entrega": "10/2025", "mts": 90.0, "dorms": 3}, {"lat": -23.54413, "lon": -46.58488, "rua": "Rua Padre Adelino", "num": 957, "bairro": "Quarta Parada", "cidade": "São Paulo", "emp": "Parque Diálogo Padre Adelino", "status": "Comercialização", "filial": "Tatuapé", "tkt": 6565.74, "tipo": "Padrão", "entrega": "10/2025", "mts": 96.0, "dorms": 3}, {"lat": -23.59366, "lon": -46.62058, "rua": "Rua Vergueiro", "num": 5194, "bairro": "Nova Klabin", "cidade": "São Paulo", "emp": "Living Infinity Nova Klabin", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 7747.91, "tipo": "Padrão", "entrega": "05/2025", "mts": 92.0, "dorms": 2}, {"lat": -23.59366, "lon": -46.62058, "rua": "Rua Vergueiro", "num": 5194, "bairro": "Nova Klabin", "cidade": "São Paulo", "emp": "Living Infinity Nova Klabin", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 5737.27, "tipo": "Garden", "entrega": "05/2025", "mts": 94.0, "dorms": 2}, {"lat": -23.59366, "lon": -46.62058, "rua": "Rua Vergueiro", "num": 5194, "bairro": "Nova Klabin", "cidade": "São Paulo", "emp": "Living Infinity Nova Klabin", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 5993.14, "tipo": "Garden", "entrega": "05/2025", "mts": 123.0, "dorms": 3}, {"lat": -23.57214, "lon": -46.58646, "rua": "Rua São Nicásio", "num": 150, "bairro": "Alto Da Mooca", "cidade": "São Paulo", "emp": "Living Duett Mooca", "status": "Comercialização", "filial": "Mooca", "tkt": 5102.54, "tipo": "Padrão", "entrega": "08/2025", "mts": 68.3, "dorms": 2}, {"lat": -23.57214, "lon": -46.58646, "rua": "Rua São Nicásio", "num": 150, "bairro": "Alto Da Mooca", "cidade": "São Paulo", "emp": "Living Duett Mooca", "status": "Comercialização", "filial": "Mooca", "tkt": 5416.3, "tipo": "Padrão", "entrega": "08/2025", "mts": 74.8, "dorms": 2}, {"lat": -23.57214, "lon": -46.58646, "rua": "Rua São Nicásio", "num": 150, "bairro": "Alto Da Mooca", "cidade": "São Paulo", "emp": "Living Duett Mooca", "status": "Comercialização", "filial": "Mooca", "tkt": 6361.1, "tipo": "Padrão", "entrega": "08/2025", "mts": 84.8, "dorms": 3}, {"lat": -23.62489, "lon": -46.68719, "rua": "Rua João de Lacerda Soares", "num": 90, "bairro": "Jardim Das Acácias", "cidade": "São Paulo", "emp": "Brooklin Noventa Living", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 7007.26, "tipo": "Garden", "entrega": "05/2025", "mts": 104.0, "dorms": 2}, {"lat": -23.57907, "lon": -46.58481, "rua": "Rua José Zappi", "num": 255, "bairro": "Vila Prudente", "cidade": "São Paulo", "emp": "Raízes Mooca Reserve", "status": "Comercialização", "filial": "Mooca", "tkt": 3671.04, "tipo": "Padrão", "entrega": "08/2025", "mts": 68.0, "dorms": 2}, {"lat": -23.57907, "lon": -46.58481, "rua": "Rua José Zappi", "num": 255, "bairro": "Vila Prudente", "cidade": "São Paulo", "emp": "Raízes Mooca Reserve", "status": "Comercialização", "filial": "Mooca", "tkt": 4767.3, "tipo": "Padrão", "entrega": "08/2025", "mts": 85.0, "dorms": 3}, {"lat": -23.57907, "lon": -46.58481, "rua": "Rua José Zappi", "num": 255, "bairro": "Vila Prudente", "cidade": "São Paulo", "emp": "Raízes Mooca Reserve", "status": "Comercialização", "filial": "Mooca", "tkt": 6415.76, "tipo": "Padrão", "entrega": "08/2025", "mts": 119.0, "dorms": 3}, {"lat": -23.57907, "lon": -46.58481, "rua": "Rua José Zappi", "num": 255, "bairro": "Vila Prudente", "cidade": "São Paulo", "emp": "Raízes Mooca Reserve", "status": "Comercialização", "filial": "Mooca", "tkt": 4058.37, "tipo": "Garden", "entrega": "08/2025", "mts": 72.2, "dorms": 2}, {"lat": -23.57907, "lon": -46.58481, "rua": "Rua José Zappi", "num": 255, "bairro": "Vila Prudente", "cidade": "São Paulo", "emp": "Raízes Mooca Reserve", "status": "Comercialização", "filial": "Mooca", "tkt": 3333.71, "tipo": "Garden", "entrega": "08/2025", "mts": 70.5, "dorms": 2}, {"lat": -23.57907, "lon": -46.58481, "rua": "Rua José Zappi", "num": 255, "bairro": "Vila Prudente", "cidade": "São Paulo", "emp": "Raízes Mooca Reserve", "status": "Comercialização", "filial": "Mooca", "tkt": 4166.65, "tipo": "Garden", "entrega": "08/2025", "mts": 87.3, "dorms": 3}, {"lat": -23.57907, "lon": -46.58481, "rua": "Rua José Zappi", "num": 255, "bairro": "Vila Prudente", "cidade": "São Paulo", "emp": "Raízes Mooca Reserve", "status": "Comercialização", "filial": "Mooca", "tkt": 5076.9, "tipo": "Garden", "entrega": "08/2025", "mts": 99.0, "dorms": 3}, {"lat": -23.57907, "lon": -46.58481, "rua": "Rua José Zappi", "num": 255, "bairro": "Vila Prudente", "cidade": "São Paulo", "emp": "Raízes Mooca Reserve", "status": "Comercialização", "filial": "Mooca", "tkt": 6321.8, "tipo": "Garden", "entrega": "08/2025", "mts": 122.6, "dorms": 3}, {"lat": -23.64778, "lon": -46.70205, "rua": "Rua Conde de Itu", "num": 350, "bairro": "Centro", "cidade": "São Paulo", "emp": "Arch Boa Vista Residence", "status": "Comercialização", "filial": "Mooca", "tkt": 5548.0, "tipo": "Padrão", "entrega": "09/2025", "mts": 88.0, "dorms": 3}, {"lat": -23.50702, "lon": -46.70462, "rua": "Rua da Balsa", "num": 1301, "bairro": "Freguesia Do Ó", "cidade": "São Paulo", "emp": "Patteo São Paulo - Fase 2", "status": "Comercialização", "filial": "Norte", "tkt": 7482.94, "tipo": "Cobertura", "entrega": "05/2024", "mts": 122.0, "dorms": 3}, {"lat": -23.51962, "lon": -46.68095, "rua": "R. Arnaldo José Pacífico", "num": 18, "bairro": "Barra Funda", "cidade": "São Paulo", "emp": "Bosque Pitangueiras", "status": "Comercialização", "filial": "Oscar", "tkt": 7679.65, "tipo": "Padrão", "entrega": "06/2025", "mts": 97.0, "dorms": 3}, {"lat": -23.59061, "lon": -46.62836, "rua": "Rua Francisco de Vitória", "num": 74, "bairro": "Jardim Vila Mariana", "cidade": "São Paulo", "emp": "N.a.u. Klabin By Cyrela", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 7408.74, "tipo": "Garden", "entrega": "10/2025", "mts": 124.5, "dorms": 3}, {"lat": -23.57812, "lon": -46.61934, "rua": "Rua Coronel Diogo", "num": 873, "bairro": "Aclimação", "cidade": "São Paulo", "emp": "Living Wellness Aclimação", "status": "Comercialização", "filial": "Mooca", "tkt": 7197.86, "tipo": "Padrão", "entrega": "09/2025", "mts": 75.0, "dorms": 2}, {"lat": -23.59172, "lon": -46.63755, "rua": "Rua Madre Cabrini", "num": 341, "bairro": "Vila Mariana", "cidade": "São Paulo", "emp": "Park Mariana Exclusive", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 7615.5, "tipo": "Padrão", "entrega": "09/2025", "mts": 94.0, "dorms": 3}, {"lat": -23.57233, "lon": -46.71225, "rua": "Rua Santa Rosa Júnior", "num": 283, "bairro": "Butantã", "cidade": "São Paulo", "emp": "Raízes Premium Butantã", "status": "Comercialização", "filial": "Oscar", "tkt": 7408.45, "tipo": "Garden", "entrega": "10/2025", "mts": 101.8, "dorms": 3}, {"lat": -23.57233, "lon": -46.71225, "rua": "Rua Santa Rosa Júnior", "num": 283, "bairro": "Butantã", "cidade": "São Paulo", "emp": "Raízes Premium Butantã", "status": "Comercialização", "filial": "Oscar", "tkt": 7885.87, "tipo": "Padrão", "entrega": "10/2025", "mts": 115.9, "dorms": 3}, {"lat": -23.54177, "lon": -46.63829, "rua": "Avenida Rio Branco", "num": 82, "bairro": "República", "cidade": "São Paulo", "emp": "Mapp Rio Branco", "status": "Comercialização", "filial": "Mooca", "tkt": 3479.9, "tipo": "Cobertura", "entrega": "02/2025", "mts": 71.8, "dorms": 2}, {"lat": -23.56986, "lon": -46.71017, "rua": "Rua Estevão Lopes", "num": 156, "bairro": "Butantã", "cidade": "São Paulo", "emp": "Ari Butantã", "status": "Comercialização", "filial": "Oscar", "tkt": 7262.51, "tipo": "Garden", "entrega": "12/2025", "mts": 123.0, "dorms": 2}, {"lat": -23.58792, "lon": -46.63948, "rua": "Rua Doutor Tomás Alves", "num": 130, "bairro": "Vila Mariana", "cidade": "São Paulo", "emp": "Equalize Vila Mariana", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 6974.5, "tipo": "Cobertura", "entrega": "12/2024", "mts": 95.3, "dorms": 2}, {"lat": -23.47556, "lon": -46.6717, "rua": "Avenida Inajar de Souza", "num": 3900, "bairro": "Limão", "cidade": "São Paulo", "emp": "Vivaz Prime Vila Nova Cachoeirinha - Fase 2", "status": "Comercialização", "filial": "Norte", "tkt": 2702.95, "tipo": "Garden", "entrega": "12/2024", "mts": 102.0, "dorms": 2}, {"lat": -23.54669, "lon": -46.68962, "rua": "Rua Cayowaá", "num": 2284, "bairro": "Perdizes", "cidade": "São Paulo", "emp": "Máden Vila Madalena – Studios", "status": "Comercialização", "filial": "Oscar", "tkt": 7675.15, "tipo": "Padrão", "entrega": "04/2025", "mts": 92.0, "dorms": 3}, {"lat": -23.54633, "lon": -46.69014, "rua": "Rua José Augusto Penteado", "num": 70, "bairro": "Sumaré", "cidade": "São Paulo", "emp": "Maden Vila Mariana", "status": "Comercialização", "filial": "Oscar", "tkt": 7812.94, "tipo": "Garden", "entrega": "04/2025", "mts": 106.9, "dorms": 2}, {"lat": -23.54633, "lon": -46.69014, "rua": "Rua José Augusto Penteado", "num": 70, "bairro": "Sumaré", "cidade": "São Paulo", "emp": "Maden Vila Mariana", "status": "Comercialização", "filial": "Oscar", "tkt": 6791.95, "tipo": "Padrão", "entrega": "04/2025", "mts": 91.2, "dorms": 3}, {"lat": -23.53213, "lon": -46.50236, "rua": "Rua Porto da Folha", "num": 155, "bairro": "Cidade Patriarca", "cidade": "São Paulo", "emp": "Panorama Patriarca", "status": "Comercialização", "filial": "Tatuapé", "tkt": 4803.14, "tipo": "Padrão", "entrega": "12/2025", "mts": 131.0, "dorms": 3}, {"lat": -23.53213, "lon": -46.50236, "rua": "Rua Porto da Folha", "num": 155, "bairro": "Cidade Patriarca", "cidade": "São Paulo", "emp": "Panorama Patriarca", "status": "Comercialização", "filial": "Tatuapé", "tkt": 3304.98, "tipo": "Padrão", "entrega": "12/2025", "mts": 103.0, "dorms": 3}, {"lat": -23.53213, "lon": -46.50236, "rua": "Rua Porto da Folha", "num": 155, "bairro": "Cidade Patriarca", "cidade": "São Paulo", "emp": "Panorama Patriarca", "status": "Comercialização", "filial": "Tatuapé", "tkt": 3170.44, "tipo": "Garden", "entrega": "12/2025", "mts": 91.0, "dorms": 3}, {"lat": -23.53213, "lon": -46.50236, "rua": "Rua Porto da Folha", "num": 155, "bairro": "Cidade Patriarca", "cidade": "São Paulo", "emp": "Panorama Patriarca", "status": "Comercialização", "filial": "Tatuapé", "tkt": 3907.82, "tipo": "Garden", "entrega": "12/2025", "mts": 117.0, "dorms": 2}, {"lat": -23.53213, "lon": -46.50236, "rua": "Rua Porto da Folha", "num": 155, "bairro": "Cidade Patriarca", "cidade": "São Paulo", "emp": "Panorama Patriarca", "status": "Comercialização", "filial": "Tatuapé", "tkt": 4577.8, "tipo": "Garden", "entrega": "12/2025", "mts": 131.0, "dorms": 2}, {"lat": -23.62464, "lon": -46.63498, "rua": "Rua Professor Aprígio Gonzaga - de 321/322 ao fim", "num": 675, "bairro": "São Judas", "cidade": "São Paulo", "emp": "Wish 675", "status": "Comercialização", "filial": "Vila Mariana", "tkt": 4944.78, "tipo": "Garden", "entrega": "10/2025", "mts": 109.1, "dorms": 3}, {"lat": -23.56468, "lon": -46.64452, "rua": "Rua Pio XII", "num": 414, "bairro": "Liberdade", "cidade": "São Paulo", "emp": "Geo Paulista", "status": "Comercialização", "filial": "Mooca", "tkt": 6245.03, "tipo": "Garden", "entrega": "12/2025", "mts": 80.7, "dorms": 2}, {"lat": -23.5458, "lon": -46.64239, "rua": "Rua Basílio da Gama", "num": 177, "bairro": "República", "cidade": "São Paulo", "emp": "Basílio 177", "status": "Comercialização", "filial": "Mooca", "tkt": 6123.92, "tipo": "Padrão", "entrega": "06/2025", "mts": 77.0, "dorms": 2}, {"lat": -23.5458, "lon": -46.64239, "rua": "Rua Basílio da Gama", "num": 177, "bairro": "República", "cidade": "São Paulo", "emp": "Basílio 177", "status": "Comercialização", "filial": "Mooca", "tkt": 5751.86, "tipo": "Padrão", "entrega": "06/2025", "mts": 81.0, "dorms": 2}, {"lat": -23.5458, "lon": -46.64239, "rua": "Rua Basílio da Gama", "num": 177, "bairro": "República", "cidade": "São Paulo", "emp": "Basílio 177", "status": "Comercialização", "filial": "Mooca", "tkt": 7684.91, "tipo": "Padrão", "entrega": "06/2025", "mts": 92.0, "dorms": 2}, {"lat": -23.5458, "lon": -46.64239, "rua": "Rua Basílio da Gama", "num": 177, "bairro": "República", "cidade": "São Paulo", "emp": "Basílio 177", "status": "Comercialização", "filial": "Mooca", "tkt": 5891.28, "tipo": "Padrão", "entrega": "06/2025", "mts": 112.0, "dorms": 2}, {"lat": -23.51388, "lon": -46.58299, "rua": "Rua Araritaguaba", "num": 1143, "bairro": "Vila Maria", "cidade": "São Paulo", "emp": "Harmony Altos Da Vila Maria", "status": "Comercialização", "filial": "Norte", "tkt": 6062.59, "tipo": "Padrão", "entrega": "12/2025", "mts": 95.0, "dorms": 3}, {"lat": -23.58135, "lon": -46.58778, "rua": "Rua General Feliciano Falcão", "num": 129, "bairro": "Vila Prudente", "cidade": "São Paulo", "emp": "San Lorenzo Villaggio", "status": "Comercialização", "filial": "Mooca", "tkt": 3879.61, "tipo": "Garden", "entrega": "09/2025", "mts": 93.8, "dorms": 2}, {"lat": -23.58135, "lon": -46.58778, "rua": "Rua General Feliciano Falcão", "num": 129, "bairro": "Vila Prudente", "cidade": "São Paulo", "emp": "San Lorenzo Villaggio", "status": "Comercialização", "filial": "Mooca", "tkt": 5250.0, "tipo": "Cobertura", "entrega": "09/2025", "mts": 109.0, "dorms": 2}, {"lat": -23.54235, "lon": -46.57207, "rua": "Rua Fernandes Pinheiro", "num": 316, "bairro": "Tatuapé", "cidade": "São Paulo", "emp": "Bilbao", "status": "Comercialização", "filial": "Tatuapé", "tkt": 4597.16, "tipo": "Garden", "entrega": "09/2025", "mts": 111.2, "dorms": 2}];
+const tipologias = ["Cobertura", "Garden", "Padrão"];
+const dormsOpcoes = [2, 3, 4];
+const TKT_MIN = 2445.0;
+const TKT_MAX = 7927.33;
+const MTS_MIN = 60.0;
+const MTS_MAX = 142.4;
+
+const map = L.map('map').setView([-23.58, -46.63], 11);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap contributors',
+  maxZoom: 18
+}).addTo(map);
+
+const colors = {
+  'Mooca': '#791F1F',
+  'Oscar': '#1E5FA5',
+  'Vila Mariana': '#028090',
+  'Tatuapé': '#854F0B',
+  'Norte': '#5B2C83',
+  'Berrini': '#0D7A3B',
+  'ABC': '#C2185B'
+};
+
+const RAIO_M = 3000;
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function distanciaMaisProxima(lat, lon) {
+  let menor = Infinity;
+  let filialProxima = null;
+  filiais.forEach(f => {
+    const d = haversineKm(lat, lon, f.lat, f.lon);
+    if (d < menor) { menor = d; filialProxima = f.filial; }
+  });
+  return { dist: menor, filial: filialProxima };
+}
+
+// Raio do ponto proporcional ao ticket (escala dentro de um intervalo visualmente legível)
+function raioPorTicket(tkt) {
+  if (tkt === null) return 4;
+  const minR = 3, maxR = 11;
+  const pct = (tkt - TKT_MIN) / (TKT_MAX - TKT_MIN || 1);
+  return minR + pct * (maxR - minR);
+}
+
+filiais.forEach(f => {
+  L.circle([f.lat, f.lon], {
+    radius: RAIO_M,
+    color: '#1E5FA5',
+    weight: 0,
+    fillColor: '#1E5FA5',
+    fillOpacity: 0.35
+  }).addTo(map);
+});
+
+filiais.forEach(f => {
+  const color = colors[f.filial] || '#000';
+  const marker = L.circleMarker([f.lat, f.lon], {
+    radius: 12,
+    color: color,
+    weight: 0,
+    fillColor: color,
+    fillOpacity: 0.65
+  }).addTo(map);
+  marker.bindPopup(`<div class="filial-popup"><b>Filial: ${f.filial}</b><br>Lat: ${f.lat.toFixed(6)}, Lon: ${f.lon.toFixed(6)}<br>Raio de atuação: 3km</div>`);
+  marker.bindTooltip(f.filial, {permanent:false});
+});
+
+// Controle de fullscreen customizado (aplica no container inteiro, não só no mapa)
+const FullscreenControl = L.Control.extend({
+  options: { position: 'topleft' },
+  onAdd: function() {
+    const btn = L.DomUtil.create('button', '');
+    btn.innerHTML = '⛶';
+    btn.title = 'Tela cheia';
+    btn.style.width = '34px';
+    btn.style.height = '34px';
+    btn.style.background = 'white';
+    btn.style.border = 'none';
+    btn.style.borderRadius = '4px';
+    btn.style.boxShadow = '0 1px 4px rgba(0,0,0,0.3)';
+    btn.style.fontSize = '18px';
+    btn.style.cursor = 'pointer';
+    L.DomEvent.disableClickPropagation(btn);
+    L.DomEvent.on(btn, 'click', function() {
+      const container = document.getElementById('app-container');
+      if (!document.fullscreenElement) {
+        container.requestFullscreen ? container.requestFullscreen() : container.webkitRequestFullscreen && container.webkitRequestFullscreen();
+      } else {
+        document.exitFullscreen ? document.exitFullscreen() : document.webkitExitFullscreen && document.webkitExitFullscreen();
+      }
+    });
+    return btn;
+  }
+});
+map.addControl(new FullscreenControl());
+
+document.addEventListener('fullscreenchange', () => { setTimeout(() => map.invalidateSize(), 100); });
+document.addEventListener('webkitfullscreenchange', () => { setTimeout(() => map.invalidateSize(), 100); });
+let propMarkers = L.layerGroup().addTo(map);
+
+function formatBRL(v) {
+  return 'R$ ' + v.toLocaleString('pt-BR', {minimumFractionDigits:0, maximumFractionDigits:0});
+}
+
+function formatM2(v) {
+  return v.toLocaleString('pt-BR', {minimumFractionDigits:0, maximumFractionDigits:0}) + ' m²';
+}
+
+function renderProps() {
+  propMarkers.clearLayers();
+  const tktMin = parseFloat(document.getElementById('tkt-min').value);
+  const tktMax = parseFloat(document.getElementById('tkt-max').value);
+  const mtsMin = parseFloat(document.getElementById('mts-min').value);
+  const mtsMax = parseFloat(document.getElementById('mts-max').value);
+  const tipoSel = document.getElementById('tipo-select').value;
+  const dormsSel = document.getElementById('dorms-select').value;
+
+  let count = 0;
+  props.forEach(p => {
+    if (p.tkt === null || p.tkt < tktMin - 0.5 || p.tkt > tktMax + 0.5) return;
+    if (p.mts === null || p.mts < mtsMin - 0.5 || p.mts > mtsMax + 0.5) return;
+    if (tipoSel !== 'TODOS' && p.tipo !== tipoSel) return;
+    if (dormsSel !== 'TODOS' && String(p.dorms) !== dormsSel) return;
+    count++;
+    const marker = L.circleMarker([p.lat, p.lon], {
+      radius: raioPorTicket(p.tkt),
+      color: '#888',
+      weight: 1,
+      fillColor: '#bbb',
+      fillOpacity: 0.55
+    });
+    marker.on('click', () => abrirPainel(p));
+    propMarkers.addLayer(marker);
+  });
+  document.getElementById('filter-count').textContent = count + ' imóveis exibidos';
+}
+
+function abrirPainel(p) {
+  const enderecoLinha = p.rua ? `${p.rua}${p.num ? ', ' + p.num : ''}` : '';
+  const { dist, filial } = distanciaMaisProxima(p.lat, p.lon);
+  const dentro = dist <= (RAIO_M / 1000);
+  const badge = dentro
+    ? `<span class="badge-in">Dentro do raio de 3km · ${filial}</span>`
+    : `<span class="badge-out">Fora do raio · ${dist.toFixed(1)}km de ${filial}</span>`;
+  const content = `
+    <h3>${p.emp}</h3>
+    <div class="row">${enderecoLinha ? enderecoLinha + '<br>' : ''}${p.bairro}, ${p.cidade}</div>
+    <div class="row"><b>Status:</b> ${p.status}</div>
+    <div class="row"><b>Filial:</b> ${p.filial}</div>
+    <div class="row"><b>Tipologia:</b> ${p.tipo}</div>
+    <div class="row"><b>Dormitórios:</b> ${p.dorms !== null ? p.dorms : '-'}</div>
+    <div class="row"><b>Ticket:</b> ${formatBRL(p.tkt)}</div>
+    <div class="row"><b>Metragem:</b> ${p.mts !== null ? formatM2(p.mts) : '-'}</div>
+    <div class="row"><b>Entrega:</b> ${p.entrega}</div>
+    <div class="row"><small>Lat: ${p.lat}, Lon: ${p.lon}</small></div>
+    <div class="row">${badge}</div>
+  `;
+  document.getElementById('panel-content').innerHTML = content;
+  document.getElementById('detail-panel').classList.add('open');
+  const filterBox = document.querySelector('.filter-box');
+  if (filterBox) filterBox.style.marginRight = '300px';
+}
+
+document.getElementById('panel-close').addEventListener('click', () => {
+  document.getElementById('detail-panel').classList.remove('open');
+  const filterBox = document.querySelector('.filter-box');
+  if (filterBox) filterBox.style.marginRight = '0';
+});
+
+// Legenda
+const legend = L.control({position: 'bottomright'});
+legend.onAdd = function() {
+  const div = L.DomUtil.create('div', 'legend');
+  let html = '<b>Filiais</b><br>';
+  filiais.forEach(f => {
+    const color = colors[f.filial] || '#000';
+    html += `<div class="filial-row"><span><span class="swatch" style="background:${color}"></span>${f.filial}</span></div>`;
+  });
+  html += '<br><span class="swatch" style="background:#bbb;border:1px solid #888"></span>Imóveis<br>';
+  html += '<br><span style="display:inline-block;width:13px;height:13px;background:rgba(30,95,165,0.35);border-radius:50%;margin-right:6px;vertical-align:middle;"></span>Raio de 3km<br>';
+  div.innerHTML = html;
+  return div;
+};
+legend.addTo(map);
+
+// Controle de busca por lat/long
+const searchControl = L.control({position: 'topleft'});
+searchControl.onAdd = function() {
+  const div = L.DomUtil.create('div', 'search-box');
+  div.innerHTML = `
+    <input type="text" id="lat-input" placeholder="Latitude (ex: -23.5613)" />
+    <input type="text" id="lon-input" placeholder="Longitude (ex: -46.6562)" />
+    <button id="addr-btn">Marcar no mapa</button>
+    <button id="clear-btn" style="margin-top:6px; background:#888;">Limpar pesquisa</button>
+    <div class="search-status" id="addr-status"></div>
+  `;
+  L.DomEvent.disableClickPropagation(div);
+  return div;
+};
+searchControl.addTo(map);
+
+let searchMarker = null;
+
+async function marcarCoordenada() {
+  const latInput = document.getElementById('lat-input');
+  const lonInput = document.getElementById('lon-input');
+  const status = document.getElementById('addr-status');
+
+  const lat = parseFloat(latInput.value.trim().replace(',', '.'));
+  const lon = parseFloat(lonInput.value.trim().replace(',', '.'));
+
+  if (isNaN(lat) || isNaN(lon)) {
+    status.textContent = 'Informe latitude e longitude válidas.';
+    return;
+  }
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    status.textContent = 'Valores fora do intervalo permitido.';
+    return;
+  }
+
+  if (searchMarker) {
+    map.removeLayer(searchMarker);
+  }
+  searchMarker = L.circleMarker([lat, lon], {
+    radius: 10,
+    color: '#fff',
+    weight: 2,
+    fillColor: '#E11D2A',
+    fillOpacity: 0.95
+  }).addTo(map);
+  searchMarker.bindPopup(`<b>Ponto marcado</b><br>Lat: ${lat}, Lon: ${lon}<br>Buscando endereço...`).openPopup();
+  map.setView([lat, lon], 16);
+  status.textContent = 'Buscando endereço...';
+
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`;
+    const res = await fetch(url, { headers: { 'Accept-Language': 'pt-BR' } });
+    const data = await res.json();
+    let endereco = 'Endereço não encontrado.';
+    if (data && data.address) {
+      const a = data.address;
+      const rua = a.road || a.pedestrian || '';
+      const numero = a.house_number || '';
+      const bairro = a.suburb || a.neighbourhood || '';
+      const cidade = a.city || a.town || a.municipality || '';
+      endereco = [rua && numero ? `${rua}, ${numero}` : rua, bairro, cidade].filter(Boolean).join(' - ');
+      if (!endereco) endereco = data.display_name || 'Endereço não encontrado.';
+    }
+    searchMarker.setPopupContent(`<b>Ponto marcado</b><br>${endereco}<br>Lat: ${lat}, Lon: ${lon}`);
+    status.textContent = 'Marcado!';
+  } catch (e) {
+    searchMarker.setPopupContent(`<b>Ponto marcado</b><br>Lat: ${lat}, Lon: ${lon}<br><i>Não foi possível obter o endereço.</i>`);
+    status.textContent = 'Marcado (sem endereço).';
+  }
+}
+
+function limparPesquisa() {
+  if (searchMarker) {
+    map.removeLayer(searchMarker);
+    searchMarker = null;
+  }
+  document.getElementById('lat-input').value = '';
+  document.getElementById('lon-input').value = '';
+  document.getElementById('addr-status').textContent = '';
+}
+
+document.getElementById('addr-btn').addEventListener('click', marcarCoordenada);
+document.getElementById('clear-btn').addEventListener('click', limparPesquisa);
+['lat-input', 'lon-input'].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') marcarCoordenada();
+  });
+});
+
+// Controle de filtros: ticket (range) + tipologia
+const filterControl = L.control({position: 'topleft'});
+filterControl.onAdd = function() {
+  const div = L.DomUtil.create('div', 'filter-box');
+  let opts = '<option value="TODOS">Todas</option>';
+  tipologias.forEach(t => { opts += `<option value="${t}">${t}</option>`; });
+  let optsDorms = '<option value="TODOS">Todos</option>';
+  dormsOpcoes.forEach(d => { optsDorms += `<option value="${d}">${d} dorm.</option>`; });
+  div.innerHTML = `
+    <div class="field">
+      <label>Ticket (R$)</label>
+      <div class="range-values"><span id="tkt-min-label"></span><span id="tkt-max-label"></span></div>
+      <div class="range-slider-wrap">
+        <div class="range-track"></div>
+        <div class="range-track-fill" id="range-fill"></div>
+        <input type="range" id="tkt-min" min="${TKT_MIN}" max="${TKT_MAX}" value="${TKT_MIN}" step="1" />
+        <input type="range" id="tkt-max" min="${TKT_MIN}" max="${TKT_MAX}" value="${TKT_MAX}" step="1" />
+      </div>
+    </div>
+    <div class="field">
+      <label>Metragem (m²)</label>
+      <div class="range-values"><span id="mts-min-label"></span><span id="mts-max-label"></span></div>
+      <div class="range-slider-wrap">
+        <div class="range-track"></div>
+        <div class="range-track-fill" id="range-fill-mts"></div>
+        <input type="range" id="mts-min" min="${MTS_MIN}" max="${MTS_MAX}" value="${MTS_MIN}" step="1" />
+        <input type="range" id="mts-max" min="${MTS_MIN}" max="${MTS_MAX}" value="${MTS_MAX}" step="1" />
+      </div>
+    </div>
+    <div class="field">
+      <label>Dormitórios</label>
+      <select id="dorms-select">${optsDorms}</select>
+    </div>
+    <div class="field">
+      <label>Tipologia</label>
+      <select id="tipo-select">${opts}</select>
+    </div>
+    <div id="filter-count" style="font-size:12px; color:#555;"></div>
+  `;
+  L.DomEvent.disableClickPropagation(div);
+  return div;
+};
+filterControl.addTo(map);
+
+function updateRangeUI() {
+  const minEl = document.getElementById('tkt-min');
+  const maxEl = document.getElementById('tkt-max');
+  let minV = parseFloat(minEl.value);
+  let maxV = parseFloat(maxEl.value);
+  if (minV > maxV) { [minV, maxV] = [maxV, minV]; }
+  document.getElementById('tkt-min-label').textContent = formatBRL(minV);
+  document.getElementById('tkt-max-label').textContent = formatBRL(maxV);
+  const pctMin = ((minV - TKT_MIN) / (TKT_MAX - TKT_MIN)) * 100;
+  const pctMax = ((maxV - TKT_MIN) / (TKT_MAX - TKT_MIN)) * 100;
+  const fill = document.getElementById('range-fill');
+  fill.style.left = pctMin + '%';
+  fill.style.width = (pctMax - pctMin) + '%';
+}
+
+function updateRangeUIMts() {
+  const minEl = document.getElementById('mts-min');
+  const maxEl = document.getElementById('mts-max');
+  let minV = parseFloat(minEl.value);
+  let maxV = parseFloat(maxEl.value);
+  if (minV > maxV) { [minV, maxV] = [maxV, minV]; }
+  document.getElementById('mts-min-label').textContent = formatM2(minV);
+  document.getElementById('mts-max-label').textContent = formatM2(maxV);
+  const pctMin = ((minV - MTS_MIN) / (MTS_MAX - MTS_MIN)) * 100;
+  const pctMax = ((maxV - MTS_MIN) / (MTS_MAX - MTS_MIN)) * 100;
+  const fill = document.getElementById('range-fill-mts');
+  fill.style.left = pctMin + '%';
+  fill.style.width = (pctMax - pctMin) + '%';
+}
+
+document.getElementById('tkt-min').addEventListener('input', function() {
+  if (parseFloat(this.value) > parseFloat(document.getElementById('tkt-max').value)) {
+    document.getElementById('tkt-max').value = this.value;
+  }
+  updateRangeUI();
+  renderProps();
+});
+document.getElementById('tkt-max').addEventListener('input', function() {
+  if (parseFloat(this.value) < parseFloat(document.getElementById('tkt-min').value)) {
+    document.getElementById('tkt-min').value = this.value;
+  }
+  updateRangeUI();
+  renderProps();
+});
+document.getElementById('mts-min').addEventListener('input', function() {
+  if (parseFloat(this.value) > parseFloat(document.getElementById('mts-max').value)) {
+    document.getElementById('mts-max').value = this.value;
+  }
+  updateRangeUIMts();
+  renderProps();
+});
+document.getElementById('mts-max').addEventListener('input', function() {
+  if (parseFloat(this.value) < parseFloat(document.getElementById('mts-min').value)) {
+    document.getElementById('mts-min').value = this.value;
+  }
+  updateRangeUIMts();
+  renderProps();
+});
+document.getElementById('tipo-select').addEventListener('change', renderProps);
+document.getElementById('dorms-select').addEventListener('change', renderProps);
+
+updateRangeUI();
+updateRangeUIMts();
+renderProps();
+</script>
+</body>
+</html>
